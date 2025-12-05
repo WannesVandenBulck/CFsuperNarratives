@@ -1,0 +1,187 @@
+CF COUNTERFACTUAL NARRATIVE PIPELINE – OVERVIEW
+
+0. TO INITIATE: INSTALL DEPENDENCIES
+--------------------
+
+a. Activate your virtual environment:
+
+    .venv\Scripts\activate     (Windows)
+    source .venv/bin/activate  (Mac/Linux)
+
+b. Install all dependencies:
+
+    pip install -r requirements.txt
+
+This installs all libraries needed 
+
+1. WHAT THIS PIPELINE DOES
+--------------------------
+
+This project generates counterfactual "super" narratives for machine-learning predictions.
+
+A trained random forest model predicts whether a person’s income is above or below 50K (binary classification). 
+DiCE is used to generate counterfactual examples: 
+small, realistic changes to a person’s situation that would flip the model’s prediction 
+(for example, increasing education level or work hours).
+
+For each selected individual in the test set:
+- The project builds a counterfactual table with one “original” row and several “cf_x” rows.
+- This table is sent to a large language model (GPT-5.1) together with a structured prompt.
+- The LLM produces a natural-language narrative that explains:
+  - why the model gives the current prediction,
+  - which features the model seems to reward,
+  - and which realistic changes could flip the prediction.
+
+
+2. VARIABLES THAT COULD BE CHANGED
+---------------------------
+
+Below is a list of the main variables you can tweak, and where to find them.
+
+
+A. COUNTERFACTUAL GENERATION (DiCE)
+-----------------------------------
+
+File: scripts/experiments/make_cf_tables.py
+
+- INSTANCE_INDICES
+  What: List of indices in X_test for which counterfactuals will be generated.
+  Example:
+    INSTANCE_INDICES = [0, 1, 2, 3, 4]
+
+- TOTAL_CFS
+  What: Number of counterfactuals generated per instance.
+  Example:
+    TOTAL_CFS = 5
+
+- continuous_features
+  What: List of features treated as continuous by DiCE.
+  Example:
+    continuous_features = [
+        "age",
+        "education-num",
+        "hours-per-week",
+        "capital-gain",
+        "capital-loss",
+    ]
+
+- categorical_features
+  What: List of features treated as categorical by DiCE.
+  Example:
+    categorical_features = [
+        "sex",
+        "married",
+    ]
+
+- mutable_features
+  What: Features DiCE is allowed to change when generating counterfactuals (age and sex are deliberately excluded).
+  Example:
+    mutable_features = [
+        "education-num",
+        "hours-per-week",
+        "capital-gain",
+        "capital-loss",
+        "married",
+    ]
+
+- method="random"
+  What: Type of DiCE explainer. "random" is model-agnostic and works with the random forest.
+  Example:
+    exp = Dice(data_dice, model_dice, method="random")
+
+- features_to_vary=mutable_features
+  What: Explicitly restricts DiCE to only vary the features listed in mutable_features.
+  Example:
+    exp.generate_counterfactuals(
+        query_instance,
+        total_CFs=TOTAL_CFS,
+        desired_class="opposite",
+        features_to_vary=mutable_features,
+    )
+
+
+B. LLM GENERATION (NARRATIVES)
+------------------------------
+
+File: scripts/experiments/run_cf_experiments.py
+
+- INSTANCE_INDICES
+  What: Which instances (and corresponding CF tables) to generate narratives for. Should match the indices used in make_cf_tables.py.
+  Example:
+    INSTANCE_INDICES = [0, 1, 2, 3, 4]
+
+- USE_LONG_PROMPT
+  What: Toggles between short and long narrative style.
+  Example:
+    USE_LONG_PROMPT = True   # long narratives
+    USE_LONG_PROMPT = False  # short narratives
+
+- CF_TABLE_DIR
+  What: Folder where CF tables are read from.
+  Example:
+    CF_TABLE_DIR = os.path.join("data", "cf_tables")
+
+- RESULTS_DIR
+  What: Folder where narrative .txt files are saved.
+  Example:
+    RESULTS_DIR = os.path.join("results", "narratives", "adult_rf_long")
+
+File: cfnarrative_metrics/llm_tools/openai_client.py
+
+- model (inside generate_text)
+  What: Which LLM to use (e.g. GPT-5.1).
+  Example:
+    model="gpt-5.1"
+
+- temperature
+  What: Controls creativity vs determinism. Lower (e.g. 0.2–0.3) = more faithful and stable, higher = more varied.
+  Example:
+    temperature=0.3
+
+
+C. PROMPTS AND NARRATIVE STYLE
+------------------------------
+
+File: cfnarrative_metrics/llm_tools/prompts.py
+
+- DATASET_DESCRIPTION
+  What: Text block describing the dataset and features. Included in every prompt.
+
+- INSTANCE_DESCRIPTION_TEMPLATE and describe_instance()
+  What: Template and helper function to describe a single data instance (the original person).
+
+- COUNTERFACTUAL_EXPLANATION
+  What: Text explaining what counterfactuals are and how to read the CF table. Included in every prompt.
+
+- CF_SHORT_PROMPT_INSTRUCTIONS
+  What: Rules and style for short narratives (roughly 5–7 sentences).
+
+- CF_LONG_PROMPT_INSTRUCTIONS
+  What: Rules and style for long narratives (roughly 8–12 sentences).
+
+- build_cf_prompt(cf_table, long=False)
+  What: Assembles the full prompt for the LLM using:
+        - DATASET_DESCRIPTION
+        - instance description
+        - COUNTERFACTUAL_EXPLANATION
+        - the CF table
+        - short or long instructions
+
+
+D. API KEYS AND CONFIG
+----------------------
+
+File: config/keys.yaml
+
+- openai_key (or similar)
+  What: Stores your OpenAI API key used by openai_client.py.
+
+File: cfnarrative_metrics/llm_tools/openai_client.py
+
+- Reads config/keys.yaml and sets up the OpenAI client.
+- You can adjust which key is used or extend it for other providers if needed.
+
+
+3.  ABOUT RUNNING THE PIPELINE
+
+a. run in the terminal 

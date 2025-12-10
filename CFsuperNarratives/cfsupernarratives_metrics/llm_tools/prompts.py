@@ -7,13 +7,19 @@ Each row in the data is one person. The target variable is:
 - income = 1: predicted income > 50K (50,000 USD)
 
 The features are:
-- age: age in years. 
-- education-num: level of education as a numeric score (higher = more education).
-- hours-per-week: average number of hours worked per week.
-- capital-gain: annual capital gains in USD (e.g. from investments).
-- capital-loss: annual capital losses in USD.
-- sex: 0 = female, 1 = male.
-- married: 1 = married, 0 = not married.
+- age: Age of the individual in years (continuous).
+- education-num: The highest level of education achieved, represented as a numerical ordinal value:
+    1: Preschool, 2: 1st-4th, 3: 5th-6th, 4: 7th-8th, 5: 9th, 
+    6: 10th, 7: 11th, 8: 12th, 9: High School Grad, 10: Some College, 
+    11: Associate Degree (Vocational), 12: Associate Degree (Academic), 
+    13: Bachelor's, 14: Master's, 15: Professional School, 16: Doctorate.
+- hours-per-week: The average number of hours worked per week (continuous).
+- capital-gain: Annual income from investment sources (capital gains) in USD (continuous).
+- capital-loss: Annual loss from investment sources (capital losses) in USD (continuous).
+- sex: Biological sex, where 0 = Female and 1 = Male.
+- married: A binary indicator derived from marital status.
+    1 = Married with spouse present (includes "Married-civ-spouse" and "Married-AF-spouse").
+    0 = Not currently married (includes "Never-married", "Divorced", "Separated", "Widowed", and "Married-spouse-absent").
 
 In this project, age and sex are considered fixed characteristics that cannot be changed.
 All other features are considered potentially changeable in the counterfactuals.
@@ -127,17 +133,19 @@ STYLE:
 """
 MANY_CF_PROMPT_INSTRUCTIONS = """
 TASK:
-You got given a whole bunch of counterfactual examples for the same original instance.
-It is your job to summarize what the model seems to consider important for changing the prediction.
-Provide an end user with actionable insights that do change the predicted class.
-At the same time, provide a numeric summary of the counterfactuals. This means saying how many counterfactuals changed which features, and by how much on average.
-You must talk in explicit percentages (in %) and averages where relevant. Don't refer to individual counterfactuals.
+- You are given a table of counterfactuals for the same original instance.
+- It is your job to summarize what the model seems to consider important for changing the prediction. If a change to a feature in order to change the target class is counterintuitive and seems wrong, don't mention it. 
+- Provide an end user with actionable insights that do change the predicted class.
+- At the same time, provide a numeric summary of the counterfactuals. This means saying how many counterfactuals changed which features, and by how much on average.
+- You must talk in explicit percentages (in %) and averages where relevant. Don't refer to individual counterfactuals, except for in the last phrase.
 
 Write a detailed narrative explanation for a non-technical reader that explains:
 1) The current prediction for the original person and what their situation looks like.
 2) Quantified summary over all counterfactuals: mention how many total counterfactuals the were generated,
-and extract the most relevant features. If relevant, quantify which features were mostly changed together etc. 
+and extract the most relevant features. If relevant, include which features were often changed together as this might contain extra information. 
 3) Based on the situation of the current person and the quantified summary, provide the best actionable insights for this person to actually change the predicted class. 
+Make sure that your suggestions change the target class and explicitely mention that following these suggestions does change the target class. 
+4) Provide, based on your insights, the best counterfactual given this context in the last phrase. Explicitely refer to this counterfactual.  
 
 CONSTRAINTS:
 - Only use information from the dataset description, the original instance description, and the counterfactual table.
@@ -146,8 +154,8 @@ CONSTRAINTS:
 - Only discuss changes in education-num, hours-per-week, capital-gain, capital-loss, or married.
 - If several counterfactuals show a similar pattern (e.g. education-num is always higher), highlight that pattern explicitly.
 - Do not talk about model internals, algorithms, probabilities, loss functions, or training details.
-- DO NOT refer to individual counterfactuals; focus on the overall patterns you see in the data.
-- Use a maximum of 15 sentences. 
+- DO NOT refer to individual counterfactuals, except for the last phrase; focus on the overall patterns you see in the data.
+- Use a maximum of 20 sentences. 
 
 STYLE:
 - Length: aim for around 10-15 sentences.
@@ -155,12 +163,53 @@ STYLE:
 - Focus on making the link between the specific numbers in the table and the qualitative story.
 - Do not use bullet points or tables; write a coherent, flowing narrative.
 - Do not refer to cf_k in technical terms; refer to them as "counterfactual k".
+- Don't refer to categories of features as their number, but use real-world names. For example, say "PhD" instead of education level 13. 
+- You are directly talking to the person in the original instance. Be polite, empathic, and respectful.
+
+"""
+
+NEW_CF_PROMPT_INSTRUCTIONS = """
+TASK:
+- You are given a table of counterfactuals for the same original instance.
+- It is your job to summarize what the model seems to consider important for changing the predicted target class. 
+- Provide an end user with concrete actionable insights that do change the predicted class.
+- At the same time, provide a numeric summary of the counterfactuals. This means saying how many counterfactuals changed which features, by how much on average, and which features often changed together in order to change the predicted class. 
+- You must talk in explicit percentages (in %) and averages where relevant. Don't refer to individual counterfactuals, except for in the last phrase.
+
+Write a detailed narrative explanation for a non-technical reader that explains:
+1) Start by shortly going over the current prediction for the original instance and what their situation looks like.
+2) Mention briefly, if applicable, which features always changed in the counterfactuals, and which features never changed. 
+3) Quantified summary over all counterfactuals: mention how many total counterfactuals the were generated,
+and extract the most relevant features. If relevant, include which features were often changed together as this might contain extra information. 
+3) Based on the situation of the current person and the quantified summary, provide the best actionable insights for this person to actually change the predicted class. 
+Make sure that your suggestions change the target class and explicitely mention that following these suggestions does change the target class. 
+4) Provide, based on your insights, the best counterfactual given this context in the last phrase. Explicitely refer to this counterfactual only.  
+
+CONSTRAINTS:
+- Only use information from the dataset description, the original instance description, and the counterfactual table.
+- Do NOT invent new feature values or new counterfactual examples.
+- Do NOT suggest changing age or sex; mention explicitly that these are treated as fixed characteristics if relevant.
+- Only discuss changes in education-num, hours-per-week, capital-gain, capital-loss, or married.
+- If several counterfactuals show a similar pattern (e.g. education-num is always higher), highlight that pattern explicitly.
+- Do not talk about model internals, algorithms, probabilities, loss functions, or training details.
+- DO NOT refer to individual counterfactuals, except for the last phrase; focus on the overall patterns you see in the data.
+- Use a maximum of 20 sentences. 
+
+STYLE:
+- Length: aim for around 10-15 sentences.
+- Tone: neutral, explanatory, and patient.
+- Focus on making the link between the specific numbers in the table and the qualitative story.
+- Do not use bullet points or tables; write a coherent, flowing narrative.
+- Do not refer to cf_k in technical terms; refer to them as "counterfactual k".
+- Don't refer to categories of features as their number, but use real-world names. For example, say "PhD" instead of education level 13. 
+- You are directly talking to the person in the original instance. Be polite, empathic, and respectful. Use "you" statements.
 
 """
 PROMPT_INSTRUCTIONS = {
     "short": CF_SHORT_PROMPT_INSTRUCTIONS,
     "long": CF_LONG_PROMPT_INSTRUCTIONS,
     "many": MANY_CF_PROMPT_INSTRUCTIONS,  
+    "new": NEW_CF_PROMPT_INSTRUCTIONS,
 }
 def build_cf_prompt(cf_table, prompt_type: str = "many") -> str:
     """
